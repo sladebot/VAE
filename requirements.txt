@@ -1,0 +1,2 @@
+python-box==5.3.0
+tensorboardX==2.1
