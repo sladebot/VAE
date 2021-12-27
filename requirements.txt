@@ -3,3 +3,4 @@ tensorboardX==2.1
 pydantic
 streamlit
 streamlit_drawable_canvas
+pytorch-lightning
