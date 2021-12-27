@@ -1,2 +1,5 @@
 python-box==5.3.0
 tensorboardX==2.1
+pydantic
+streamlit
+streamlit_drawable_canvas
