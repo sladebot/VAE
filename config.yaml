@@ -8,7 +8,7 @@ model_params:
   batch_size: 144
   hidden_size: 128
   alpha: 1024
-  dataset: "fashion-mnist"
+  dataset: "mnist"
   save_images: true
   save_path: "log_images/"
   channels: 1
