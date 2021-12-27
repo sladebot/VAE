@@ -34,4 +34,4 @@ if __name__ == "__main__":
         os.mkdir("./saved_models")
 
     trainer.save_checkpoint(
-        f"saved_models/{config.model_type}_alpha_{config.model_config.alpha}_dim_{config.model_config.hidden_size}.ckpt")
+        f"saved_models/{config.model_type}_alpha_{config.model_config.alpha}_dim_{config.model_config.hidden_size}_{config.model_config.dataset}.ckpt")
