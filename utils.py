@@ -5,7 +5,6 @@ from config import config
 from PIL import Image 
 from pytorch_lightning.loggers import TensorBoardLogger
 import torch
-
 from torch.nn.functional import interpolate
 from torchvision.transforms import Resize, ToPILImage, Compose
 from torchvision.utils import make_grid
@@ -39,6 +38,21 @@ def tensor_to_img(tsr):
 
 def resize_img(img, w, h):
     return img.resize((w, h))
+
+def canvas_to_tensor(canvas):
+    """
+    Convert Image of RGBA to single channel B/W and convert from numpy array
+    to a PyTorch Tensor of [1,1,28,28]
+    """
+    img = canvas.image_data
+    img = img[:, :, :-1]  # Ignore alpha channel
+    img = img.mean(axis=2)
+    img = img/255
+    img = img*2 - 1.
+    img = torch.FloatTensor(img)
+    tens = img.unsqueeze(0).unsqueeze(0)
+    tens = interpolate(tens, (28, 28))
+    return tens
 
 
 def export_to_onnx(ckpt):
