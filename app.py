@@ -7,9 +7,9 @@ from PIL import Image
 
 st.set_page_config("VAE MNIST Pytorch Lightning")
 st.title("VAE Playground")
-title_img = Image.open("images/title_img.jpg")
+# title_img = Image.open("images/title_img.jpg")
 
-st.image(title_img)
+# st.image(title_img)
 st.markdown(
     "This is a simple streamlit app to showcase how a simple VAEs."
 )

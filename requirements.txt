@@ -4,3 +4,4 @@ pydantic
 streamlit
 streamlit_drawable_canvas
 pytorch-lightning
+torchvision
