@@ -11,7 +11,7 @@ from torchvision.transforms import Resize, ToPILImage, Compose
 from torchvision.utils import make_grid
 
 def load_model(ckpt, model_type="vae"):
-    model = vae_models[model_type].load_from_checkpoint(ckpt)
+    model = vae_models[model_type].load_from_checkpoint(f"./saved_models/{ckpt}")
     model.eval()
     return model
 
@@ -41,8 +41,8 @@ def resize_img(img, w, h):
     return img.resize((w, h))
 
 
-def export_to_onnx(ckpt_path):
-    model = load_model(ckpt_path)
+def export_to_onnx(ckpt):
+    model = load_model(ckpt)
     filepath = "model.onnx"
     test_iter = iter(model.test_dataloader())
     sample, _ = next(test_iter)
