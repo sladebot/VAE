@@ -1,8 +1,8 @@
-
-import torch
-import torch.nn as nn
 import pytorch_lightning as pl
-import random
+import torch.nn as nn
+from typing import Optional
+import torch
+
 from torchvision.datasets import MNIST, FashionMNIST, CelebA
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -10,81 +10,60 @@ from torchvision.utils import save_image
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-import os
-from typing import Optional
 
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        return x.view(x.size(0), -1)
-
-
-class Stack(nn.Module):
-    def __init__(self, channels, height, width):
-        super(Stack, self).__init__()
-        self.channels = channels
-        self.height = height
-        self.width = width
-
-    def forward(self, x):
-        return x.view(x.size(0), self.channels, self.height, self.width)
-
-
-class VAE(pl.LightningModule):
-    def __init__(self, hidden_size: int, alpha: int, lr: float,
-                 batch_size: int,
+class Conv_VAE(pl.LightningModule):
+    def __init__(self, channels: int, height: int, width: int, lr: int,
+                 hidden_size: int, alpha: int, batch_size: int,
                  dataset: Optional[str] = None,
                  save_images: Optional[bool] = None,
                  save_path: Optional[str] = None, **kwargs):
-        """Init function for the VAE
-        Args:
-        hidden_size (int): Latent Hidden Size
-        alpha (int): Hyperparameter to control the importance of
-        reconstruction loss vs KL-Divergence Loss
-        lr (float): Learning Rate, will not be used if auto_lr_find is used.
-        dataset (Optional[str]): Dataset to used
-        save_images (Optional[bool]): Boolean to decide whether to save images
-        save_path (Optional[str]): Path to save images
-        """
-
-        super().__init__()
-        self.hidden_size = hidden_size
-        if save_images:
-            self.save_path = f'{save_path}/{kwargs["model_type"]}_images/'
+        super().__init__(hidden_size, alpha, lr, batch_size,
+                         dataset, save_images, save_path, **kwargs)
+        # Our code now will look identical to the VAE class except that the
+        # encoder and the decoder have been adjusted
+        assert not height % 4 and not width % 4, "Choose height and width to "\
+            "be divisible by 4"
+        self.channels = channels
+        self.height = height
+        self.width = width
         self.save_hyperparameters()
-        self.save_images = save_images
-        self.lr = lr
-        self.batch_size = batch_size
+        final_height = (self.height//4-3)//2+1
+        final_width = (self.width//4-3)//2+1
         self.encoder = nn.Sequential(
+            nn.Conv2d(self.channels, 8, 3, padding=1), nn.BatchNorm2d(8),
+            nn.ReLU(),
+            nn.Conv2d(8, 16, 3, padding=1), nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, 3, padding=1), nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),  # 32x7x7
+            nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
+            nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
+            nn.MaxPool2d(3, stride=2),  # 128*3*3
             Flatten(),
-            nn.Linear(784, 392), nn.BatchNorm1d(392), nn.LeakyReLU(0.1),
-            nn.Linear(392, 196), nn.BatchNorm1d(196), nn.LeakyReLU(0.1),
-            nn.Linear(196, 128), nn.BatchNorm1d(128), nn.LeakyReLU(0.1),
-            nn.Linear(128, hidden_size)
+            nn.Linear(128*final_height*final_width,
+                      32*final_height*final_width),
+            nn.LeakyReLU(), nn.BatchNorm1d(32*final_height*final_width),
+            nn.Linear(32*final_height*final_width, self.hidden_size),
+            nn.LeakyReLU()
         )
 
-        self.hidden2mu = nn.Linear(hidden_size, hidden_size)
-        self.hidden2log_var = nn.Linear(hidden_size, hidden_size)
-        self.alpha = alpha
         self.decoder = nn.Sequential(
-            nn.Linear(hidden_size, 128), nn.BatchNorm1d(128), nn.LeakyReLU(0.1),
-            nn.Linear(128, 196), nn.BatchNorm1d(196), nn.LeakyReLU(0.1),
-            nn.Linear(196, 392), nn.BatchNorm1d(392), nn.LeakyReLU(0.1),
-            nn.Linear(392, 784),
-            Stack(1, 28, 28),
-            nn.Tanh()
+            nn.Linear(self.hidden_size, 32*final_height * final_width),
+            nn.BatchNorm1d(32*final_height * final_width), nn.ReLU(),
+            nn.Linear(32*final_height*final_width,
+                      128*final_height*final_width),
+            nn.BatchNorm1d(128*final_height * final_width), nn.ReLU(),
+            Stack(128, 3, 3),
+            nn.ConvTranspose2d(128, 64, 3, 2), nn.BatchNorm2d(64), nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, 3, 1, padding=1),
+            nn.BatchNorm2d(32), nn.LeakyReLU(),
+            nn.ConvTranspose2d(
+                32, 16, 2, 2), nn.BatchNorm2d(16), nn.LeakyReLU(),
+            nn.ConvTranspose2d(16, 8, 2, 2), nn.BatchNorm2d(8),
+            nn.Conv2d(8, self.channels, 3, padding=1), nn.Tanh()
         )
-        self.data_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Lambda(lambda x: 2*x - 1.)
-        ])
-        self.celeba_transform = transforms.Compose([
-            transforms.CenterCrop(130),
-            transforms.Resize([64, 64]),
-            transforms.ToTensor()
-        ])
-        self.dataset = dataset
 
     def encode(self, x):
         hidden = self.encoder(x)
@@ -99,9 +78,9 @@ class VAE(pl.LightningModule):
     def reparameterize(self, mu, log_var):
         # Reparametrization Trick to allow gradients to backpropagate from the
         # stochastic part of the model
-        sigma = torch.exp(0.5*log_var)
+        sigma = torch.exp(0.5 * log_var)
         z = torch.randn_like(sigma)
-        return mu + sigma*z
+        return mu + sigma * z
 
     def forward(self, x):
         mu, log_var = self.encode(x)
@@ -116,7 +95,7 @@ class VAE(pl.LightningModule):
                            torch.exp(log_var)).sum(dim=1)).mean(dim=0)
         recon_loss_criterion = nn.MSELoss()
         recon_loss = recon_loss_criterion(x, x_out)
-        loss = recon_loss*self.alpha + kl_loss
+        loss = recon_loss * self.alpha + kl_loss
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
@@ -132,7 +111,7 @@ class VAE(pl.LightningModule):
         self.log('val_recon_loss', recon_loss, on_step=False, on_epoch=True)
         self.log('val_loss', loss, on_step=False, on_epoch=True)
         return x_out, loss
-    
+
     def test_step(self, batch, batch_idx):
         x, _ = batch
         mu, log_var, x_out = self.forward(x)
@@ -144,7 +123,6 @@ class VAE(pl.LightningModule):
         self.log('test_loss', loss, on_step=False, on_epoch=True)
         return x_out, loss
 
-
     def validation_epoch_end(self, outputs):
         if not self.save_images:
             return
@@ -155,7 +133,7 @@ class VAE(pl.LightningModule):
         output_sample = choice[0].reshape(-1, 1, 28, 28)
         save_image(
             output_sample,
-            f"{self.save_path}/epoch_{self.current_epoch+1}.png"
+            f"{self.save_path}/epoch_{self.current_epoch + 1}.png"
         )
 
     def train_dataloader(self):
@@ -163,7 +141,7 @@ class VAE(pl.LightningModule):
             train_set = MNIST("data/", download=True, train=True, transform=self.data_transform)
         elif self.dataset == "fashion-mnist":
             train_set = FashionMNIST('data/', download=True, train=True,
-                transform=self.data_transform)
+                                     transform=self.data_transform)
         elif self.dataset == "celeba":
             train_set = CelebA('data/', download=False, split="train", transform=self.celeba_transform)
 
@@ -180,21 +158,21 @@ class VAE(pl.LightningModule):
         elif self.dataset == "celeba":
             val_set = CelebA('data/', download=False, split="valid", transform=self.celeba_transform)
         return DataLoader(val_set, batch_size=64, num_workers=4)
-    
+
     def test_dataloader(self):
         if self.dataset == "mnist":
             test_set = MNIST("data/", download=True, train=False, transform=self.data_transform)
         elif self.dataset == "fashion-mnist":
             test_set = FashionMNIST('data/', download=True, train=False,
-                transform=self.data_transform)
+                                    transform=self.data_transform)
         elif self.dataset == "celeba":
             test_set = CelebA('data/', download=False, train=False, transform=self.celeba_transform)
 
         return DataLoader(test_set, batch_size=1, shuffle=False, num_workers=4)
-    
+
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=(self.lr or self.learning_rate))
-        lr_scheduler = ReduceLROnPlateau(optimizer,)
+        lr_scheduler = ReduceLROnPlateau(optimizer, )
         return {
             "optimizer": optimizer, "lr_scheduler": lr_scheduler,
             "monitor": "val_loss"
@@ -210,8 +188,8 @@ class VAE(pl.LightningModule):
 
         if self.training:
             raise Exception("This function should not be called when model is still "
-                "in training mode. Use model.eval() before calling the "
-                "function")
+                            "in training mode. Use model.eval() before calling the "
+                            "function")
 
         mu1, lv1 = self.encode(x1)
         mu2, lv2 = self.encode(x2)
