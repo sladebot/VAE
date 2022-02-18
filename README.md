@@ -1,42 +1,20 @@
----
-title: VAE PyTorch
-emoji: ❤️‍🔥
-colorFrom: purple
-colorTo: red
-sdk: streamlit
-app_file: app.py
-pinned: false
----
-# Configuration
-`title`: _string_  
-Display title for the Space
-`emoji`: _string_  
-Space emoji (emoji-only character allowed)
-`colorFrom`: _string_  
-Color for Thumbnail gradient (red, yellow, green, blue, indigo, purple, pink, gray)
-`colorTo`: _string_  
-Color for Thumbnail gradient (red, yellow, green, blue, indigo, purple, pink, gray)
-`sdk`: _string_  
-Can be either `gradio` or `streamlit`
-`sdk_version` : _string_  
-Only applicable for `streamlit` SDK.  
-See [doc](https://hf.co/docs/hub/spaces) for more info on supported versions.
-`app_file`: _string_  
-Path to your main application file (which contains either `gradio` or `streamlit` Python code).  
-Path is relative to the root of the repository.
-`pinned`: _boolean_  
-Whether the Space stays on top of your list.
+### VAE with Pytorch-Lightning
 
-# VAE Playground
+This is inspired from vae-playground. This is an example where we test out vae and conv_vae models with multiple datasets 
+like MNIST, celeb-a and MNIST-Fashion datasets.
 
-This is a sample project trying out VAE with Pytorch Lightning
+This also comes with an example streamlit app & deployed at huggingface.
 
 
 ## Model Training
 
 You can train the VAE models by using `train.py` and editing the `config.yaml` file. \
 Hyperparameters to change are:
-- model_type
+- model_type [vae|conv_vae]
 - alpha
 - hidden_dim
-- dataset
+- dataset [celeba|mnist|fashion-mnist]
+
+There are other configurations that can be changed if required like height, width, channels etc. It also contains the pytorch-lightning configs as well.
+
+
