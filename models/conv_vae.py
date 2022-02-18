@@ -1,7 +1,11 @@
-import torch
+from .vae import VAE, Flatten, Stack
 import torch.nn as nn
 import pytorch_lightning as pl
+import torch
+import os
 import random
+from typing import Optional
+import torchvision.transforms as transforms
 from torchvision.datasets import MNIST, FashionMNIST, CelebA
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -9,45 +13,32 @@ from torchvision.utils import save_image
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-import os
-from typing import Optional
+class PrintShape(nn.Module):
+    def __init__(self):
+        super(PrintShape, self).__init__()
+
+    def forward(self, x):
+        # Do your print / debug stuff here
+        # print(f"Shape: {x.shape}")
+        return x
+
+class UnFlatten(nn.Module):
+    def forward(self, input, size=4096):
+        # print("Unflatteing")
+        return input.view(input.size(0), size, 1, 1)
 
 
 class Flatten(nn.Module):
-    def forward(self, x):
-        return x.view(x.size(0), -1)
+    def forward(self, input):
+        # print("Flattening")
+        return input.view(input.size(0), -1)
 
-
-class Stack(nn.Module):
-    def __init__(self, channels, height, width):
-        super(Stack, self).__init__()
-        self.channels = channels
-        self.height = height
-        self.width = width
-
-    def forward(self, x):
-        return x.view(x.size(0), self.channels, self.height, self.width)
-
-
-class VAE(pl.LightningModule):
-    def __init__(self, latent_size: int, hidden_size: int, alpha: int, lr: float,
-                 batch_size: int,
+class Conv_VAE(pl.LightningModule):
+    def __init__(self, channels: int, height: int, width: int, lr: int,
+                 latent_size: int, hidden_size: int, alpha: int, batch_size: int,
                  dataset: Optional[str] = None,
                  save_images: Optional[bool] = None,
                  save_path: Optional[str] = None, **kwargs):
-        """Init function for the VAE
-
-        Args:
-
-        latent_size (int): Latent Hidden Size
-        alpha (int): Hyperparameter to control the importance of
-        reconstruction loss vs KL-Divergence Loss
-        lr (float): Learning Rate, will not be used if auto_lr_find is used.
-        dataset (Optional[str]): Dataset to used
-        save_images (Optional[bool]): Boolean to decide whether to save images
-        save_path (Optional[str]): Path to save images
-        """
-
         super().__init__()
         self.latent_size = latent_size
         self.hidden_size = hidden_size
@@ -57,41 +48,90 @@ class VAE(pl.LightningModule):
         self.save_images = save_images
         self.lr = lr
         self.batch_size = batch_size
-        self.encoder = nn.Sequential(
-            Flatten(),
-            nn.Linear(784, 392), nn.BatchNorm1d(392), nn.LeakyReLU(0.1),
-            nn.Linear(392, 196), nn.BatchNorm1d(196), nn.LeakyReLU(0.1),
-            nn.Linear(196, 128), nn.BatchNorm1d(128), nn.LeakyReLU(0.1),
-            nn.Linear(128, latent_size)
-        )
-        self.hidden2mu = nn.Linear(latent_size, latent_size)
-        self.hidden2log_var = nn.Linear(latent_size, latent_size)
         self.alpha = alpha
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 128), nn.BatchNorm1d(128), nn.LeakyReLU(0.1),
-            nn.Linear(128, 196), nn.BatchNorm1d(196), nn.LeakyReLU(0.1),
-            nn.Linear(196, 392), nn.BatchNorm1d(392), nn.LeakyReLU(0.1),
-            nn.Linear(392, 784),
-            Stack(1, 28, 28),
-            nn.Tanh()
-        )
-        self.height = kwargs.get("height")
-        self.width = kwargs.get("width")
-        self.data_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Lambda(lambda x:2*x-1.)])
         self.dataset = dataset
+        assert not height % 4 and not width % 4, "Choose height and width to "\
+            "be divisible by 4"
+        self.channels = channels
+        self.height = height
+        self.width = width
+        self.latent_size = latent_size
+        self.save_hyperparameters()
+
+        self.data_transform = transforms.Compose([
+            transforms.Resize(64),
+            transforms.CenterCrop((64, 64)),
+            transforms.ToTensor()
+        ])
+
+
+        self.encoder = nn.Sequential(
+            PrintShape(),
+            nn.Conv2d(self.channels, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU(),
+            PrintShape(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(),
+            PrintShape(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(),
+            PrintShape(),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(),
+            PrintShape(),
+            Flatten(),
+            PrintShape(),
+        )
+
+        self.fc1 = nn.Linear(self.hidden_size, self.latent_size)
+        self.fc2 = nn.Linear(self.latent_size, self.hidden_size)
+
+        self.decoder = nn.Sequential(
+            PrintShape(),
+            # nn.Linear(self.hidden_size, self.hidden_size),
+            # PrintShape(),
+            # nn.BatchNorm1d(self.hidden_size),
+            UnFlatten(),
+            PrintShape(),
+            nn.ConvTranspose2d(self.hidden_size, 256, kernel_size=6, stride=2, padding=1),
+            PrintShape(),
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            PrintShape(),
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            PrintShape(),
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            PrintShape(),
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(32, self.channels, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(self.channels),
+            PrintShape(),
+            nn.Sigmoid(),
+        )
 
     def encode(self, x):
         hidden = self.encoder(x)
-        mu = self.hidden2mu(hidden)
-        log_var = self.hidden2log_var(hidden)
+        mu, log_var = self.fc1(hidden), self.fc1(hidden)
+        # print("Encoded")
         return mu, log_var
 
-    def decode(self, x):
-        x = self.decoder(x)
+    def decode(self, z):
+        # print("Decoding")
+        # f = nn.Linear(self.latent_size, self.hidden_size)
+        z = self.fc2(z)
+        # print(f"L: {z.shape}")
+        x = self.decoder(z)
         return x
-
+    
     def reparametrize(self, mu, log_var):
         # Reparametrization Trick to allow gradients to backpropagate from the
         # stochastic part of the model
@@ -151,7 +191,7 @@ class VAE(pl.LightningModule):
             "optimizer": optimizer, "lr_scheduler": lr_scheduler,
             "monitor": "val_loss"
         }
-
+    
     def forward(self, x):
         mu, log_var = self.encode(x)
         hidden = self.reparametrize(mu, log_var)
@@ -182,32 +222,18 @@ class VAE(pl.LightningModule):
         elif self.dataset == "celeba":
             val_set = CelebA('data/', download=False, split="valid", transform=self.data_transform)
         return DataLoader(val_set, batch_size=self.batch_size)
+    
+    def test_dataloader(self):
+        if self.dataset == "mnist":
+            val_set = MNIST('data/', download=True, train=False,
+                            transform=self.data_transform)
+        elif self.dataset == "fashion-mnist":
+            val_set = FashionMNIST(
+                'data/', download=True, train=False,
+                transform=self.data_transform)
+        elif self.dataset == "celeba":
+            val_set = CelebA('data/', download=False, split="test", transform=self.data_transform)
+        return DataLoader(val_set, batch_size=self.batch_size)
 
-    def scale_image(self, img):
-        out = (img + 1) / 2
-        return out
 
-    def interpolate(self, x1, x2):
 
-        assert x1.shape == x2.shape, "Inputs must be of the same shape"
-        if x1.dim() == 3:
-            x1 = x1.unsqueeze(0)
-        if x2.dim() == 3:
-            x2 = x2.unsqueeze(0)
-        if self.training:
-            raise Exception(
-                "This function should not be called when model is still "
-                "in training mode. Use model.eval() before calling the "
-                "function")
-        mu1, lv1 = self.encode(x1)
-        mu2, lv2 = self.encode(x2)
-        z1 = self.reparametrize(mu1, lv1)
-        z2 = self.reparametrize(mu2, lv2)
-        weights = torch.arange(0.1, 0.9, 0.1)
-        intermediate = [self.decode(z1)]
-        for wt in weights:
-            inter = (1.-wt)*z1 + wt*z2
-            intermediate.append(self.decode(inter))
-        intermediate.append(self.decode(z2))
-        out = torch.stack(intermediate, dim=0).squeeze(1)
-        return out, (mu1, lv1), (mu2, lv2)
