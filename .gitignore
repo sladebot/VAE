@@ -8,3 +8,4 @@ log_images/
 logs/
 *.env
 .idea/
+saved_models/
