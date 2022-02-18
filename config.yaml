@@ -9,10 +9,10 @@ model_params:
   hidden_size: 4096
   latent_size: 128
   alpha: 1024
-  dataset: "celeba"
+  dataset: "fashion-mnist"
   save_images: true
   save_path: "log_images/"
-  channels: 3
+  channels: 1
   height: 64
   width: 64
 logger_params:
