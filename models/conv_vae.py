@@ -153,16 +153,22 @@ class Conv_VAE(pl.LightningModule):
                  on_epoch=True, prog_bar=True)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        self.shared_eval(batch)
+
     def validation_step(self, batch, batch_idx):
+        return self.shared_eval(batch)
+
+    def shared_eval(self, batch):
         x, _ = batch
         mu, log_var, x_out = self.forward(x)
 
-        kl_loss = (-0.5*(1+log_var - mu**2 -
-                         torch.exp(log_var)).sum(dim=1)).mean(dim=0)
+        kl_loss = (-0.5 * (1 + log_var - mu ** 2 -
+                           torch.exp(log_var)).sum(dim=1)).mean(dim=0)
         recon_loss_criterion = nn.MSELoss()
         recon_loss = recon_loss_criterion(x, x_out)
         # print(kl_loss.item(),recon_loss.item())
-        loss = recon_loss*self.alpha + kl_loss
+        loss = recon_loss * self.alpha + kl_loss
         self.log('val_kl_loss', kl_loss, on_step=False, on_epoch=True)
         self.log('val_recon_loss', recon_loss, on_step=False, on_epoch=True)
         self.log('val_loss', loss, on_step=False, on_epoch=True)
